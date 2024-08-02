@@ -25,8 +25,8 @@ os.makedirs(STORAGE_FOLDER, exist_ok=True)
 
 # Authentication
 def authenticate(credentials):
-    correct_username = "user"
-    correct_password = "password"
+    correct_username = "mohan"
+    correct_password = "Nmohan@1"
     if credentials['username'] != correct_username or credentials['password'] != correct_password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
     return credentials['username']
@@ -71,7 +71,7 @@ def summarize_text(text: str):
 
 # Endpoints
 @app.post("/v1/files", response_model=FileInfo)
-def upload_file(file: UploadFile,username:str,password:str):
+async def upload_file(file: UploadFile,username:str,password:str):
     credentials = {'username': username, 'password': password}
     authentication = authenticate(credentials)
     if str(authentication) == username:
@@ -83,13 +83,18 @@ def upload_file(file: UploadFile,username:str,password:str):
         file_id = str(uuid4())
         file_path = os.path.join(STORAGE_FOLDER, file_id)
         with open(file_path, "wb") as f:
-            f.write(file.read())
+            f.write(await file.read())
         text = extract_text(file)
-        summary = summarize_text(text)
+
+        # due to some issue with Predibase apis , Just now I am giving some text from original text using split method.
+
+        #summary = summarize_text(text)
+
         file_info = {
             "file_id": file_id,
             "file_name": file.filename,
-            "file_summary": summary
+            #Here I am inserting 100 chars of setence.
+            "file_summary": text[:100]
         }
         collection.insert_one(file_info)
         return file_info
@@ -108,7 +113,8 @@ def list_files(username:str,password:str):
 def get_file_summary(file_id: str, username:str,password:str):
     credentials = {'username': username, 'password': password}
     authentication = authenticate(credentials)
-    if str(authentication)!=username:
+    print(authentication,"======")
+    if str(authentication)==username:
         file_info = collection.find_one({"file_id": file_id}, {"_id": 0})
         if not file_info:
             raise HTTPException(status_code=404, detail="File not found")
