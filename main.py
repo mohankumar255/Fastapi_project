@@ -24,12 +24,12 @@ os.makedirs(STORAGE_FOLDER, exist_ok=True)
 
 
 # Authentication
-def authenticate(credentials: HTTPBasicCredentials):
+def authenticate(credentials):
     correct_username = "user"
     correct_password = "password"
-    if credentials.username != correct_username or credentials.password != correct_password:
+    if credentials['username'] != correct_username or credentials['password'] != correct_password:
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return credentials.username
+    return credentials['username']
 
 
 # Models
@@ -71,40 +71,49 @@ def summarize_text(text: str):
 
 # Endpoints
 @app.post("/v1/files", response_model=FileInfo)
-async def upload_file(file: UploadFile):
-    if not file.filename.endswith((".docx", ".pptx", ".pdf")):
-        raise HTTPException(status_code=400, detail="Invalid file type")
-    existing_file = collection.find_one({"file_name": file.filename})
-    if existing_file:
-        raise HTTPException(status_code=400, detail="File already uploaded")
-    file_id = str(uuid4())
-    file_path = os.path.join(STORAGE_FOLDER, file_id)
-    with open(file_path, "wb") as f:
-        f.write(await file.read())
-    text = extract_text(file)
-    summary = summarize_text(text)
-    file_info = {
-        "file_id": file_id,
-        "file_name": file.filename,
-        "file_summary": summary
-    }
-
-    collection.insert_one(file_info)
-    return file_info
-
+def upload_file(file: UploadFile,username:str,password:str):
+    credentials = {'username': username, 'password': password}
+    authentication = authenticate(credentials)
+    if str(authentication) == username:
+        if not file.filename.endswith((".docx", ".pptx", ".pdf")):
+            raise HTTPException(status_code=400, detail="Invalid file type")
+        existing_file = collection.find_one({"file_name": file.filename})
+        if existing_file:
+            raise HTTPException(status_code=400, detail="File already uploaded")
+        file_id = str(uuid4())
+        file_path = os.path.join(STORAGE_FOLDER, file_id)
+        with open(file_path, "wb") as f:
+            f.write(file.read())
+        text = extract_text(file)
+        summary = summarize_text(text)
+        file_info = {
+            "file_id": file_id,
+            "file_name": file.filename,
+            "file_summary": summary
+        }
+        collection.insert_one(file_info)
+        return file_info
+    return authentication
 
 @app.get("/v1/files", response_model=List[str])
-async def list_files(username: str = Depends(authenticate)):
-    files = collection.find({}, {"_id": 0, "file_id": 1})
-    return [file["file_id"] for file in files]
-
+def list_files(username:str,password:str):
+    credentials={'username':username,'password':password}
+    authentication = authenticate(credentials)
+    if str(authentication)==username:
+        files = collection.find({}, {"_id": 0, "file_id": 1})
+        return [file["file_id"] for file in files]
+    return authentication
 
 @app.get("/v1/files/{file_id}", response_model=FileInfo)
-async def get_file_summary(file_id: str, username: str = Depends(authenticate)):
-    file_info = collection.find_one({"file_id": file_id}, {"_id": 0})
-    if not file_info:
-        raise HTTPException(status_code=404, detail="File not found")
-    return file_info
+def get_file_summary(file_id: str, username:str,password:str):
+    credentials = {'username': username, 'password': password}
+    authentication = authenticate(credentials)
+    if str(authentication)!=username:
+        file_info = collection.find_one({"file_id": file_id}, {"_id": 0})
+        if not file_info:
+            raise HTTPException(status_code=404, detail="File not found")
+        return file_info
+    return authentication
 
 
 if __name__ == "__main__":
